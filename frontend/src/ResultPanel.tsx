@@ -69,10 +69,6 @@ export function ResultPanel({ result, previous = null }: { result: RecommendResp
       <p>На {dateLabel(input.date)} подходящих подрядчиков нет. Эта карточка относится только к {dateLabel(alternative.date)}.
         {' '}Город, категория, бюджет, формат, язык и длительность сохранены.</p>
       <ContractorCard card={alternative.card} alternativeDate={alternative.date} />
-      <p className="hint">{alternative.explanation_mode === 'prepared'
-        ? 'Объяснение предложения использует заранее подготовленные AI-признаки с доказательствами.'
-        : 'Объяснение предложения основано на данных каталога, без вызова AI-модели.'}</p>
-      {alternative.warnings.length > 0 && <ul>{alternative.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
     </section>}
     {(result.cards.length > 0 || alternative) && <p className="hint">Указана стартовая цена. Итоговую стоимость и детали заказа уточняйте у подрядчика.</p>}
     {comparison && <section className="date-comparison" aria-label="Сравнение дат"><h3>Что изменилось при смене даты</h3>
@@ -89,10 +85,7 @@ export function ResultPanel({ result, previous = null }: { result: RecommendResp
         </div>)}
       </details>}
     </section>
-    <footer className="result-meta"><p>{result.explanation_mode === 'prepared'
-      ? 'В объяснениях использованы заранее подготовленные AI-признаки с доказательствами. Модель не вызывается для этого запроса.'
-      : 'Основной результат основан на данных каталога. Без вызова AI-модели.'}</p>
-      {result.diagnostics.warnings.length > 0 && <div className="notice"><strong>Примечания к данным</strong><ul>{result.diagnostics.warnings.map((message, i) => <li key={i}>{message}</li>)}</ul></div>}
+    <footer className="result-meta">
       <details><summary>Версии данных и правил</summary><code>{result.data_version}</code><code>{result.feature_version}</code><code>{result.ranking_version}</code></details>
     </footer>
   </div>;
