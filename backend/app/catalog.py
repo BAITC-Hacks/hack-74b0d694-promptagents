@@ -2,6 +2,7 @@
 
 import csv
 import hashlib
+import io
 import re
 from collections import Counter
 from dataclasses import dataclass
@@ -57,7 +58,9 @@ def load_catalog(path: Path) -> Catalog:
     seen: set[str] = set()
     records = []
     try:
-        with path.open(encoding="utf-8-sig", newline="") as handle:
+        # Parse exactly the bytes used for data_version, even if the file changes
+        # between reads. Preserve newlines inside description.
+        with io.StringIO(raw.decode("utf-8-sig"), newline="") as handle:
             reader = csv.DictReader(handle, strict=True)
             header = reader.fieldnames or []
             expected = set(Profile.model_fields)
