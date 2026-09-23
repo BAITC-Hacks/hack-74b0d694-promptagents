@@ -5,9 +5,9 @@ React → Vite proxy `/api` → FastAPI → CSV в памяти. `catalog.py` п
 TypeScript-зеркало. OpenAPI: `/openapi.json`, интерактивная документация: `/docs`.
 Перезагрузка данных — перезапуск backend. БД и обязательных внешних API нет.
 
-Будущий pipeline: город + категория → жёсткие фильтры → ранжирование → до 3
-профилей → `explain()` → карточки и диагностика. Сейчас работают загрузчик,
-health, options и валидация входа; recommend возвращает 501 при готовом каталоге.
+Pipeline: город + категория → жёсткие фильтры → ранжирование → до 3
+профилей → `explain()` → карточки и диагностика. Он реализован в
+`backend/app/matching.py`; вход и данные проверяются до подбора.
 
 ## Запрос
 
@@ -44,30 +44,31 @@ health, options и валидация входа; recommend возвращает
 | --- | --- |
 | `GET /api/health` | 200: `status`, `contract_version`, `dataset_status`, `profile_count`, `data_version`, `recommendation_implemented`, `issues` |
 | `GET /api/options` | 200: `cities`, `categories`, `event_formats`, `languages`, `categories_by_city`, `date_range: {min,max}`, `data_version`; 503 при ошибке данных |
-| `POST /api/recommend` | Будущий 200 по схеме ниже; сейчас 501, если данные готовы, иначе 503; неверный вход всегда 422 |
+| `POST /api/recommend` | 200 с одним из трёх бизнес-исходов; 503 при ошибке данных, 422 при неверном входе |
 
 Health — проверка процесса и каталога, не заявление о готовности подбора.
 `status=degraded`, `dataset_status=missing|invalid`, `data_version=null`,
 `profile_count=0` при ошибке данных; подробности в `issues`. При валидном каталоге
-`status=ok`, `dataset_status=ready`; `recommendation_implemented=false` до интеграции.
+`status=ok`, `dataset_status=ready`, `recommendation_implemented=true`.
 
 Options берёт только реально присутствующие значения. Массивы сортируются по
 нормализованной строке, для равенства — по исходной Unicode-строке. Для одинаковых
 нормализованных значений выбирается минимальная исходная строка. `categories` —
 общий список; `categories_by_city` — подсказки, а не запрет отправить редкую пару.
 
-Ошибки 422/503/501 имеют единую форму:
+Ошибки 422/503 имеют единую форму:
 
 ```json
-{"error":{"code":"not_implemented","message":"Подбор ещё не реализован. Это каркас приложения.","issues":[]}}
+{"error":{"code":"validation_error","message":"Проверьте параметры запроса","issues":[]}}
 ```
 
-Коды: `validation_error` (422), `dataset_missing` / `dataset_invalid` (503),
-`not_implemented` (501). Issue: `{line: number|null, id: string|null,
+Коды: `validation_error` (422), `dataset_missing` / `dataset_invalid` (503).
+`not_implemented` (501) остался в схеме для совместимости, но готовый маршрут
+его не возвращает. Issue: `{line: number|null, id: string|null,
 field: string|null, message: string}`. Синтаксическая ошибка JSON тоже 422.
 Ошибки никогда не превращаются в бизнес-исход `no_match`.
 
-## Успешный ответ recommend (согласован, пока не реализован)
+## Успешный ответ recommend
 
 | Поле | Значение |
 | --- | --- |
@@ -127,7 +128,8 @@ value содержит исходный список дат, в котором �
 Frontend сравнивает два ответа только при одинаковых параметрах кроме date и
 одинаковом data_version. Исчезновение само по себе не доказывает занятость:
 сообщение «X занят» разрешено только при наличии X в busy_profiles нового ответа.
-Иначе причина может быть сдвигом top-3. Это запланированная функция, не готовый UI.
+Иначе причина может быть сдвигом top-3. UI сравнивает ответы только при
+совпадении остальных условий и версии данных.
 
 Формула ранжирования (инженер №1):
 `(-specialization, price_from_kzt, id)` по возрастанию; specialization ∈ {0,1}.
@@ -147,7 +149,8 @@ id — исходная уникальная строка; сравнение Py
 
 Интерфейс №3: `explain(profile: Profile, request: RecommendRequest,
 features: tuple[PreparedFeature, ...] = ()) -> Explanation` в `explanations.py`.
-Возвращает `{text,evidence,mode}`. Функция сейчас явно поднимает NotImplementedError.
+Возвращает `{text,evidence,mode}`. Функция реализована; без подготовленных
+признаков работает в режиме baseline.
 Вызывается после фильтрации; не меняет порядок, не обращается к сети. Инженер №1
 передаёт только валидные признаки. Пустые features требуют работоспособного baseline.
 
@@ -188,8 +191,9 @@ Baseline: конкретные факты о параметрах заказа +
 Это схема с плейсхолдерами, не реальные подготовленные данные. Второй kind —
 `distinctive_detail`: value — краткое свойство, event_format — формат, для которого
 оно релевантно; quote обязателен в обоих случаях. Без доказательства — не сохранять.
-Экстрактор №3 работает один раз отдельной CLI-командой и сохраняет артефакт;
-провайдер будет выбран №3. До этого внешней AI-интеграции нет.
+Экстрактор №3 работает отдельной CLI-командой через OpenAI Responses API и
+сохраняет артефакт вне HTTP-запроса. Без ключа файл не создаётся, baseline
+остаётся работоспособным. Настройка — в `data/derived/README.md`.
 
 №1 проверяет схему, dataset_sha256, поддерживаемый prompt_version=`features-v1`,
 наличие id, совпадение формата, точность и смысл цитат до использования признаков.
