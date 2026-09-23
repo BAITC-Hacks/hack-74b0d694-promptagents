@@ -13,6 +13,9 @@ from .models import (
 )
 from .matching import recommend as match_recommendations
 from .prepared import FeatureSet, load_features
+from .soft_catalog import load_soft_catalog
+from .preference_rules import options_for, RULES_VERSION
+from .models import normalize
 
 
 def error_response(status: int, code: str, message: str, issues=()) -> JSONResponse:
@@ -20,7 +23,8 @@ def error_response(status: int, code: str, message: str, issues=()) -> JSONRespo
     return JSONResponse(status_code=status, content=body.model_dump(mode="json"))
 
 
-def create_app(data_path: Path | None = None, derived_path: Path | None = None) -> FastAPI:
+def create_app(data_path: Path | None = None, derived_path: Path | None = None,
+               preferences_path: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.catalog = None
@@ -34,6 +38,9 @@ def create_app(data_path: Path | None = None, derived_path: Path | None = None) 
                 derived_path or configured_path("DERIVED_PATH", "data/derived/features.json"),
                 app.state.catalog,
             )
+            app.state.soft_catalog = load_soft_catalog(app.state.catalog, preferences_path or configured_path(
+                "PREFERENCES_PATH", "data/derived/preferences",
+            ))
         except CatalogError as exc:
             app.state.catalog_error = exc
         yield
@@ -72,11 +79,18 @@ def create_app(data_path: Path | None = None, derived_path: Path | None = None) 
     def get_options():
         return options(get_catalog())
 
+    @app.get("/api/preference-options")
+    def preference_options():
+        catalog = get_catalog()
+        return {"rules_version": RULES_VERSION, "categories": {
+            category: options_for(normalize(category)) for category in options(catalog).categories
+        }}
+
     @app.post("/api/recommend", response_model=RecommendResponse, responses={
         422: {"model": ErrorResponse}, 503: {"model": ErrorResponse}, 501: {"model": ErrorResponse},
     })
     def recommend(request: RecommendRequest):
-        return match_recommendations(get_catalog(), request, app.state.features)
+        return match_recommendations(get_catalog(), request, app.state.features, soft_catalog=app.state.soft_catalog)
 
     return app
 

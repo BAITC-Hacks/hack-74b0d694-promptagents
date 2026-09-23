@@ -1,4 +1,4 @@
-# API и архитектура v1.0.0
+# API и архитектура v1.1.0
 
 React → Vite proxy `/api` → FastAPI → CSV в памяти. `catalog.py` проверяет
 данные при старте; `models.py` — источник схем, `frontend/src/contracts.ts` —
@@ -26,9 +26,15 @@ Pipeline: город + категория → жёсткие фильтры → 
 ```
 
 Это пример формы запроса; проверенные демосценарии — в `docs/demo.md`. Все поля, кроме
-`duration_hours` и `language`, обязательны. Необязательные поля можно опустить
+`duration_hours`, `language`, `preferences_text`, `preferences`, обязательны. Необязательные поля можно опустить
 или передать `null`. Числа — конечные JSON numbers > 0 (не строки и не boolean),
 дробные значения разрешены. Пустая строка языка ошибочна. Лишние поля запрещены.
+
+`preferences_text`: строка до 2000 символов или null; NFC/пробелы/casefold,
+пустая строка становится null. `preferences`: объект criterion → value, по
+умолчанию `{}`, максимум 8 критериев, null не допускается. Ключи и значения —
+точные машинные коды из `GET /api/preference-options`; неизвестные или
+неприменимые к выбранной категории значения дают 422. Старые запросы допустимы.
 
 Дата — строго `YYYY-MM-DD`, существующая дата включительно от 2026-09-23 до
 2026-12-31. Вне окна — 422: отсутствие дат занятости не доказывает доступность.
@@ -44,6 +50,7 @@ Pipeline: город + категория → жёсткие фильтры → 
 | --- | --- |
 | `GET /api/health` | 200: `status`, `contract_version`, `dataset_status`, `profile_count`, `data_version`, `recommendation_implemented`, `issues` |
 | `GET /api/options` | 200: `cities`, `categories`, `event_formats`, `languages`, `categories_by_city`, `date_range: {min,max}`, `data_version`; 503 при ошибке данных |
+| `GET /api/preference-options` | 200: `rules_version`, `categories: {"исходная категория": [{criterion,label,values:[{value,label}]}]}`; 503 при ошибке данных |
 | `POST /api/recommend` | 200 с одним из трёх бизнес-исходов; 503 при ошибке данных, 422 при неверном входе |
 
 Health — проверка процесса и каталога, не заявление о готовности подбора.
@@ -81,6 +88,10 @@ field: string|null, message: string}`. Синтаксическая ошибка
 | `diagnostics` | `filters`, `busy_profiles`, `warnings` |
 | `explanation_mode` | `baseline` или `prepared` |
 | `data_version` | `sha256:<64 hex>` от точных байтов исходного CSV |
+| `preference_interpretation` | `preferences`, человекочитаемые `labels`, `clarification_needed`, `notes`, `interpretation_id`, `rules_version`, `mode=rules` |
+| `preference_mode` | `rules` / `prepared` / `mixed`: источники признаков, реально участвовавших в оценке пожеланий |
+| `feature_version` | SHA-256 снимка данных, правил и артефактов обоих видов |
+| `ranking_version` | `preferences-specialization-price-id-v2` |
 
 `category_absent`: total=eligible=0, cards=[]; `no_match`: total>0, eligible=0,
 cards=[]; `matched`: eligible>0, длина cards=min(3,eligible).
@@ -89,6 +100,14 @@ cards=[]; `matched`: eligible>0, длина cards=min(3,eligible).
 Карточка: `id`, `name` (=anon_name), `category` (выбранная категория), `city`,
 `price_from_kzt`, `explanation` (1–2 предложения), `evidence` (непустой список),
 `synthetic`, `city_imputed`, `price_imputed`, `origin`.
+Дополнительно: `matched_preferences`, `conflicting_preferences`, `unknown_preferences`
+и `score_breakdown`. Элемент списка пожеланий:
+`{criterion,label,requested_value,requested_label,observed_value,observed_label,status,points,evidence}`.
+status — matched/conflicting/unknown; points — 1/-1/0. Неизвестные observed_value
+и observed_label — null; evidence может содержать обе явно заявленные альтернативы.
+`score_breakdown`: `{preference_score,specialization,price_from_kzt,tie_break_id,criteria,ranking_version}`.
+Без пожеланий списки пусты, preference_score=0. Старые учебные примеры v1.0
+десериализуются с пустыми списками и null score_breakdown; runtime выдаёт полный объект.
 `origin`: `source_original` — исходная анонимизированная запись;
 `source_synthetic` — синтетическая запись организаторов;
 `team_synthetic` — отдельная добавленная командой запись. Для исходного файла
@@ -126,13 +145,18 @@ origin вычисляется по `synthetic`, а не по имени/id. Ес
 этапом, в порядке id. Объект `{id,name,date,evidence}`; evidence.field=`busy_dates`,
 value содержит исходный список дат, в котором обязательно есть date.
 Frontend сравнивает два ответа только при одинаковых параметрах кроме date и
-одинаковом data_version. Исчезновение само по себе не доказывает занятость:
+одинаковых data_version, feature_version и ranking_version. Пожелания также должны
+совпадать. Исчезновение само по себе не доказывает занятость:
 сообщение «X занят» разрешено только при наличии X в busy_profiles нового ответа.
 Иначе причина может быть сдвигом top-3. UI сравнивает ответы только при
 совпадении остальных условий и версии данных.
 
 Формула ранжирования (инженер №1):
-`(-specialization, price_from_kzt, id)` по возрастанию; specialization ∈ {0,1}.
+`(-preference_score, -specialization, price_from_kzt, id)` по возрастанию;
+specialization ∈ {0,1}. preference_score — сумма по явно заданным критериям:
+подтверждённое соответствие +1, единственная явно описанная альтернатива −1,
+неизвестные сведения или обе альтернативы 0. Все веса равны 1, повторения
+одного критерия не суммируются. Без пожеланий первый компонент всегда 0.
 Значение 1 только при валидном `format_specialization` для выбранного формата с
 подтверждающей точной цитатой из description. Просто членство в event_formats
 не добавляет балл. При отсутствии/устаревании признаков — 0 у всех.
@@ -142,8 +166,62 @@ Frontend сравнивает два ответа только при одина
 
 id — исходная уникальная строка; сравнение Python Unicode code point, чувствительно
 к регистру, без numeric/natural sort, locale или нормализации. Например, `HK-10`
-предшествует `HK-2`. Версия формулы: `specialization-price-id-v1`.
+предшествует `HK-2`. Версия формулы: `preferences-specialization-price-id-v2`.
 Детерминизм гарантируется при одинаковых данных, артефакте признаков и конфигурации.
+
+## Пожелания и воспроизводимость
+
+Фиксированный словарь `preference_rules.py` описывает услуги, не личность.
+Ведущий: delivery, formality, improvisation, guest_engagement, program_focus;
+фотограф: photo_style, photographer_presence; флорист/декоратор: decor_style,
+custom_concept; площадки: terrace, panorama, parking. Допустимые значения и
+подписи доступны в preference-options. Примеры и ограничения — [preferences.md](preferences.md).
+
+Свободный текст разбирается правилами без сети. LRU-кэш хранит неизменяемый JSON
+для 512 комбинаций нормализованных категории, текста, выбранных критериев и
+версии правил; interpretation_id — SHA-256 ключа. После перезапуска тот же
+результат восстанавливается кодом; temperature не участвует. Форма имеет
+приоритет над расходящимся текстом. Неоднозначная пара в тексте не применяется.
+Нераспознанные формулировки не оцениваются, что явно отражено в notes.
+
+Упоминания чисел, даты, города, бюджета, языка или длительности в тексте вызывают
+clarification_needed: пользователь должен проверить поля формы. Подбор идёт по
+этим полям, они никогда не изменяются молча. Пожелания не меняют eligible_count.
+
+Для оценки нужны точные цитаты с проверкой контекста, отрицаний и противоречий
+полям. Неизвестный навык не считается отсутствующим; ненавязчивость не доказывает
+спокойствие; импровизация не доказывает экстраверсию. Обе альтернативы дают 0.
+Цены, длина текста, личные сведения и реклама не дают баллы. Это эвристика
+соответствия заказу, не вероятность успеха и не оценка качества человека.
+
+`preferences.explain_preferences` формирует две фразы и evidence после фильтров,
+выделяя сначала существенное противоречие, затем совпадение; остальные критерии
+видны в структурированных списках. Без пожеланий работает прежний explain().
+Если баллы и специализация равны, message указывает на сортировку по цене и ID.
+
+## Offline-признаки пожеланий
+
+`python -m scripts.extract_preferences --limit 1` создаёт отдельный файл для
+каждого профиля: `data/derived/preferences/<sha256(id)>.json`. Каталог для API
+настраивается PREFERENCES_PATH. Метаданные: schema_version=1.0.0,
+rules_version=preferences-v1, dataset_sha256, profile_id, description_sha256,
+model=openai/точный-snapshot, prompt_version, prompt_sha256, generated_at UTC.
+features: `[{criterion,value,evidence_quote,source_field:"description",
+evidence_type:"explicit"|"unknown",applicable_categories}]`.
+Для unknown — value="unknown", evidence_quote=null; балл всегда 0.
+
+LLM предлагает признаки, общий валидатор подтверждает их теми же правилами,
+что используются без LLM. Проверяются метаданные, точный хеш промпта и каждый
+признак. Ошибка файла даёт правила с предупреждением, а не отказ подбора.
+Пропуски модели могут дополняться проверенными локальными признаками;
+происхождение видно в evidence.source и preference_mode. Изменения артефактов
+подхватываются при перезапуске backend. Профили без подтверждений остаются unknown.
+
+CLI пропускает существующие файлы; для замены/обновления используйте --overwrite.
+Вызовы только offline, таймаут 30 секунд на профиль, без retries. При ошибке
+процесс завершается с кодом 2; ранее сохранённые профильные файлы остаются.
+В /api/recommend нет сети и ожидания модели. Нет ключа/артефакта — работают
+правила; невалидный AI-артефакт — правила с warning. [Инструкция](../data/derived/README.md).
 
 ## Объяснения и подготовленные признаки
 

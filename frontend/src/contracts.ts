@@ -1,4 +1,4 @@
-// Контракт v1.0.0. Зеркало backend/app/models.py; изменения согласовать с №1.
+// Контракт v1.1.0. Зеркало backend/app/models.py.
 export interface RecommendRequest {
   city: string;
   date: string;
@@ -7,6 +7,29 @@ export interface RecommendRequest {
   budget_kzt: number;
   duration_hours?: number | null;
   language?: string | null;
+  preferences_text?: string | null;
+  preferences?: Record<string, string>;
+}
+
+export interface PreferenceOption {
+  criterion: string;
+  label: string;
+  values: { value: string; label: string }[];
+}
+export interface PreferenceOptions {
+  rules_version: string;
+  categories: Record<string, PreferenceOption[]>;
+}
+export interface PreferenceAssessment {
+  criterion: string;
+  label: string;
+  requested_value: string;
+  requested_label: string;
+  observed_value: string | null;
+  observed_label: string | null;
+  status: 'matched' | 'conflicting' | 'unknown';
+  points: -1 | 0 | 1;
+  evidence: Evidence[];
 }
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
@@ -29,6 +52,17 @@ export interface Card {
   city_imputed: boolean;
   price_imputed: boolean;
   origin: 'source_original' | 'source_synthetic' | 'team_synthetic';
+  matched_preferences?: PreferenceAssessment[];
+  conflicting_preferences?: PreferenceAssessment[];
+  unknown_preferences?: PreferenceAssessment[];
+  score_breakdown?: {
+    preference_score: number;
+    specialization: number;
+    price_from_kzt: number;
+    tie_break_id: string;
+    criteria: PreferenceAssessment[];
+    ranking_version: string;
+  } | null;
 }
 export interface Diagnostics {
   filters: {
@@ -49,6 +83,18 @@ export interface RecommendResponse {
   diagnostics: Diagnostics;
   explanation_mode: ExplanationMode;
   data_version: string;
+  preference_interpretation?: {
+    preferences: Record<string, string>;
+    labels: Record<string, string>;
+    clarification_needed: string[];
+    notes: string[];
+    interpretation_id: string;
+    rules_version: string;
+    mode: 'rules';
+  };
+  preference_mode?: 'rules' | 'prepared' | 'mixed';
+  feature_version?: string;
+  ranking_version?: string;
 }
 export interface OptionsResponse {
   cities: string[];

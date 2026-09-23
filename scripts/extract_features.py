@@ -123,7 +123,7 @@ def extract(catalog: Catalog, *, client: httpx.Client, api_key: str, model: str,
                             generated_at=datetime.now(timezone.utc).isoformat(), profiles=profiles), rejected
 
 
-def save_artifact(path: Path, artifact: PreparedFeatures, *, overwrite: bool = False) -> None:
+def save_artifact(path: Path, artifact: BaseModel, *, overwrite: bool = False) -> None:
     """Атомарная публикация только после полного успешного прохода."""
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = None

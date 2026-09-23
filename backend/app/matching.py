@@ -9,6 +9,10 @@ from .models import (
     PreparedFeature, Profile, RecommendRequest, RecommendResponse, normalize,
 )
 from .prepared import FeatureSet
+from .config import RANKING_VERSION
+from .models import ScoreBreakdown
+from .preferences import assess, explain_preferences, interpret
+from .soft_catalog import SoftCatalog, digest, load_soft_catalog
 
 Explainer = Callable[[Profile, RecommendRequest, tuple[PreparedFeature, ...]], Explanation]
 TEMPORARY_WARNING = "Модуль объяснений №3 ещё не готов: используется временное фактическое объяснение (baseline)."
@@ -53,11 +57,19 @@ def recommend(
     features: FeatureSet | None = None,
     *,
     explainer: Explainer | None = None,
+    soft_catalog: SoftCatalog | None = None,
 ) -> RecommendResponse:
     features = features if features is not None else FeatureSet.absent()
     if features.dataset_sha256 is not None and features.dataset_sha256 != catalog.sha256:
         features = FeatureSet(warnings=("SHA-256 подготовленных признаков не совпадает с каталогом; baseline без AI.",))
     warnings = list(catalog.report.get("warnings", ())) + list(features.warnings)
+    interpretation = interpret(request)
+    soft = soft_catalog if soft_catalog is not None and soft_catalog.dataset_sha256 == catalog.sha256 else load_soft_catalog(catalog)
+    warnings.extend(soft.warnings)
+    # Include legacy specialization artifacts as well as soft features in the snapshot.
+    feature_version = "sha256:" + digest(soft.version + repr(sorted(
+        (key, tuple(f.model_dump_json() for f in value)) for key, value in features.profiles.items()
+    )))
     candidates = [p for p in catalog.profiles if normalize(p.city) == request.city
                   and contains(request.category, p.categories)]
     remaining = candidates
@@ -87,8 +99,12 @@ def recommend(
     # The FeatureSet only exposes features validated against this exact profile
     # and catalog hash, also for direct callers of the pure matcher.
     validated = {p.id: features.for_profile(catalog, p, request.event_format) for p in remaining}
+    assessments = {p.id: assess(p, interpretation.preferences, soft.profiles[p.id],
+                               prepared_keys=soft.prepared.get(p.id, frozenset())) for p in remaining}
+    scores = {p.id: sum(a.points for a in assessments[p.id]) for p in remaining}
+    specialization = {p.id: int(any(f.kind == "format_specialization" for f in validated[p.id])) for p in remaining}
     ranked = sorted(remaining, key=lambda p: (
-        -int(any(f.kind == "format_specialization" for f in validated[p.id])),
+        -scores[p.id], -specialization[p.id],
         p.price_from_kzt, p.id,
     ))
     cards = []
@@ -96,7 +112,9 @@ def recommend(
     for profile in ranked[:3]:
         explain = explainer if explainer is not None else explanations.explain
         try:
-            explanation = explain(profile, request, validated[profile.id])
+            explanation = (explain_preferences(profile, request, assessments[profile.id])
+                           if interpretation.preferences and explainer is None
+                           else explain(profile, request, validated[profile.id]))
         except NotImplementedError:
             if explainer is not None:
                 raise
@@ -113,12 +131,28 @@ def recommend(
             synthetic=profile.synthetic, city_imputed=profile.city_imputed,
             price_imputed=profile.price_imputed,
             origin="source_synthetic" if profile.synthetic else "source_original",
+            matched_preferences=[a for a in assessments[profile.id] if a.status == "matched"],
+            conflicting_preferences=[a for a in assessments[profile.id] if a.status == "conflicting"],
+            unknown_preferences=[a for a in assessments[profile.id] if a.status == "unknown"],
+            score_breakdown=ScoreBreakdown(preference_score=scores[profile.id], specialization=specialization[profile.id],
+                                           price_from_kzt=profile.price_from_kzt, tie_break_id=profile.id,
+                                           criteria=assessments[profile.id], ranking_version=RANKING_VERSION),
         ))
     total, eligible = len(candidates), len(ranked)
+    message = result_message(total, eligible, steps)
+    if interpretation.preferences and eligible:
+        if len({(scores[p.id], specialization[p.id]) for p in ranked}) == 1:
+            message += " По пожеланиям и специализации различить варианты недостаточно: порядок определён стартовой ценой и ID."
+        else:
+            message += " Порядок учитывает только подтверждённые пожелания, затем специализацию, стартовую цену и ID."
+    proof_sources = {e.source for rows in assessments.values() for a in rows for e in a.evidence}
+    preference_mode = "mixed" if {"prepared", "description"} <= proof_sources else "prepared" if "prepared" in proof_sources else "rules"
     return RecommendResponse(
         status="matched" if eligible else ("no_match" if total else "category_absent"),
-        message=result_message(total, eligible, steps), normalized_request=request,
+        message=message, normalized_request=request,
         total_candidates=total, eligible_count=eligible, cards=cards,
         diagnostics=Diagnostics(filters=steps, busy_profiles=busy, warnings=warnings),
         explanation_mode=mode, data_version=catalog.data_version,
+        preference_interpretation=interpretation, preference_mode=preference_mode,
+        feature_version=feature_version, ranking_version=RANKING_VERSION,
     )

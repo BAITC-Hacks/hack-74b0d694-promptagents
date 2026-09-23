@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
-import { ApiError, asApiError, getHealth, getOptions, recommend } from './api-client';
-import type { HealthResponse, OptionsResponse, RecommendRequest, RecommendResponse } from './contracts';
+import { ApiError, asApiError, getHealth, getOptions, getPreferenceOptions, recommend } from './api-client';
+import type { HealthResponse, OptionsResponse, PreferenceOptions, RecommendRequest, RecommendResponse } from './contracts';
 import { demoPresets } from './demo-presets';
 import { ErrorPanel } from './ErrorPanel';
 import { ResultPanel } from './ResultPanel';
@@ -25,6 +25,9 @@ export function App() {
 
 function LiveSearch() {
   const [options, setOptions] = useState<OptionsResponse | null>(null);
+  const [preferenceOptions, setPreferenceOptions] = useState<PreferenceOptions | null>(null);
+  const [preferenceOptionsError, setPreferenceOptionsError] = useState(false);
+  const [category, setCategory] = useState('');
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthUnavailable, setHealthUnavailable] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -47,6 +50,10 @@ function LiveSearch() {
     setLoading(true);
     setOptionsError(null);
     setHealthUnavailable(false);
+    setPreferenceOptionsError(false);
+    getPreferenceOptions(controller.signal).then(value => {
+      if (!controller.signal.aborted) setPreferenceOptions(value);
+    }).catch(() => { if (!controller.signal.aborted) setPreferenceOptionsError(true); });
     getOptions(controller.signal).then(value => {
       if (!controller.signal.aborted) setOptions(value);
     }).catch(err => {
@@ -120,6 +127,9 @@ function LiveSearch() {
       category: String(fields.get('category')), event_format: String(fields.get('event_format')),
       budget_kzt: budget, duration_hours: duration,
       language: fields.get('language') ? String(fields.get('language')) : null,
+      preferences_text: String(fields.get('preferences_text') ?? '').trim() || null,
+      preferences: Object.fromEntries((preferenceOptions?.categories[String(fields.get('category'))] ?? [])
+        .flatMap(option => fields.get(`pref-${option.criterion}`) ? [[option.criterion, String(fields.get(`pref-${option.criterion}`))]] : [])),
     });
   }
 
@@ -127,9 +137,10 @@ function LiveSearch() {
     const form = formRef.current;
     if (!form) return;
     form.reset();
+    setCategory(input.category);
     for (const [key, value] of Object.entries(input)) {
       const element = form.elements.namedItem(key);
-      if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement) element.value = value == null ? '' : String(value);
+      if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement) element.value = value == null ? '' : String(value);
     }
     // Native validation тоже действует для демо; ответ всегда приходит из API.
     form.requestSubmit();
@@ -152,13 +163,30 @@ function LiveSearch() {
               <label>Дата мероприятия<input name="date" type="date" required min={options?.date_range.min ?? '2026-09-23'} max={options?.date_range.max ?? '2026-12-31'} aria-describedby="calendar-help" /></label>
               <label>Тип мероприятия<select name="event_format" required defaultValue=""><option value="" disabled>Выберите формат</option>
                 {options?.event_formats.map(value => <option key={value}>{value}</option>)}</select></label>
-              <label>Категория подрядчика<select name="category" required defaultValue=""><option value="" disabled>Выберите категорию</option>
+              <label>Категория подрядчика<select name="category" required defaultValue="" onChange={event => setCategory(event.target.value)}><option value="" disabled>Выберите категорию</option>
                 {options?.categories.map(value => <option key={value}>{value}</option>)}</select></label>
               <label>Бюджет, ₸<input name="budget_kzt" type="number" min="0" step="any" required placeholder="Например, 300 000" /></label>
               <label>Длительность, ч <span className="optional">необязательно</span><input name="duration_hours" type="number" min="0" step="any" placeholder="Например, 6" /></label>
               <label>Язык <span className="optional">необязательно</span><select name="language" defaultValue=""><option value="">Без предпочтений</option>
                 {options?.languages.map(value => <option key={value}>{value}</option>)}</select></label>
             </div>
+            <section className="preferences-form" aria-label="Пожелания к подрядчику">
+              <h3>Что для вас важно <span className="optional">необязательно</span></h3>
+              <p className="hint">Пожелания влияют на порядок, но не исключают кандидатов. Дату, бюджет, язык и длительность задавайте в полях выше.</p>
+              <label>Пожелания своими словами<textarea name="preferences_text" maxLength={2000} rows={3}
+                placeholder={category === 'Ведущий' || category === 'Ведущий церемонии' ? 'Например: спокойная подача, без шумных конкурсов'
+                  : category === 'Фотограф' ? 'Например: репортаж, незаметная работа'
+                  : category === 'Флорист' || category === 'Декоратор' ? 'Например: минимализм, индивидуальная концепция'
+                  : (preferenceOptions?.categories[category] ?? []).some(option => option.criterion === 'terrace') ? 'Например: терраса, панорамный вид'
+                  : 'Опишите важные для вас особенности услуги'} /></label>
+              {preferenceOptionsError && <p className="hint">Не удалось загрузить список пожеланий. Можно использовать текстовое поле. <button type="button" className="text-button" onClick={() => setAttempt(value => value + 1)}>Повторить</button></p>}
+              <div className="fields preference-fields" key={category}>
+                {(preferenceOptions?.categories[category] ?? []).map(option => <label key={option.criterion}>{option.label}
+                  <select name={`pref-${option.criterion}`} defaultValue=""><option value="">Не важно</option>
+                    {option.values.map(value => <option key={value.value} value={value.value}>{value.label}</option>)}</select>
+                </label>)}
+              </div>
+            </section>
             <p id="calendar-help" className="hint">Календарь: 23 сентября — 31 декабря 2026. Цена в каталоге стартовая; итоговую стоимость нужно уточнить.</p>
             <div className="form-actions"><button className="primary" type="submit">{sending ? 'Отправить заново' : 'Подобрать подрядчиков'} <span aria-hidden="true">→</span></button>
               {sending && <button type="button" className="secondary" onClick={() => { cancel(); setCancelled(true); }}>Отменить</button>}</div>
@@ -169,6 +197,8 @@ function LiveSearch() {
         <p className="hint">Каждая кнопка заполнит форму и отправит запрос с выбранными условиями.</p>
         <div className="demos">{demoPresets.map(preset => <button type="button" key={preset.label} disabled={!options || loading}
           onClick={() => runDemo(preset.request)}>{preset.label}<span aria-hidden="true">↗</span></button>)}</div>
+        <h3>Сравните пожелания</h3><div className="demos">{['Ненавязчивая подача', 'Только развлечения и танцы'].map(text =>
+          <button type="button" key={text} disabled={!options || loading} onClick={() => runDemo({ ...demoPresets[0].request, preferences_text: text })}>{text}<span aria-hidden="true">↗</span></button>)}</div>
         <p className="demo-footnote">Все категории доступны для любого города — в том числе когда такой категории в нём нет.</p>
       </aside>
     </div>

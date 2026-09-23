@@ -31,7 +31,9 @@ function sameConditions(a: RecommendRequest, b: RecommendRequest) {
   // Сравниваем нормализованные значения из ответов backend, не форму и не локальную эвристику.
   return a.city === b.city && a.category === b.category && a.event_format === b.event_format
     && a.budget_kzt === b.budget_kzt && (a.language ?? null) === (b.language ?? null)
-    && (a.duration_hours ?? null) === (b.duration_hours ?? null);
+    && (a.duration_hours ?? null) === (b.duration_hours ?? null)
+    && (a.preferences_text ?? null) === (b.preferences_text ?? null)
+    && JSON.stringify(Object.entries(a.preferences ?? {}).sort()) === JSON.stringify(Object.entries(b.preferences ?? {}).sort());
 }
 
 function proof(response: RecommendResponse, id: string) {
@@ -43,6 +45,7 @@ function proof(response: RecommendResponse, id: string) {
 
 export function compareDates(previous: RecommendResponse | null, current: RecommendResponse): string[] | null {
   if (!previous || previous.data_version !== current.data_version
+    || previous.feature_version !== current.feature_version || previous.ranking_version !== current.ranking_version
     || previous.normalized_request.date === current.normalized_request.date
     || !sameConditions(previous.normalized_request, current.normalized_request)) return null;
   const messages: string[] = [];

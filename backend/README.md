@@ -1,7 +1,9 @@
 # Backend PromptAgents
 
 Разработка велась в `codex/backend-matching`; код объединён с интерфейсом и
-объяснениями в `main`. API v1.0.0 без изменений схем.
+объяснениями в `main`. В `codex/preference-matching` API расширен до v1.1.0:
+пожелания и разбор оценки описаны в [контракте](../docs/api-contract.md) и
+[отчёте проверок](../docs/preferences.md). Разделы ниже описывают исходную интеграцию.
 `POST /api/recommend` возвращает HTTP 200 с `matched`, `category_absent`
 или `no_match`; health сообщает `recommendation_implemented=true`.
 Ошибки запроса остаются 422, ошибки каталога — 503.

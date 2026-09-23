@@ -5,7 +5,7 @@ import unicodedata
 from datetime import date as Date
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 from .config import DATE_MAX, DATE_MIN
 
@@ -46,6 +46,25 @@ class RecommendRequest(Model):
     budget_kzt: PositiveNumber
     duration_hours: PositiveNumber | None = None
     language: NonEmpty | None = None
+    preferences_text: Annotated[str, Field(strict=True, max_length=2000)] | None = None
+    preferences: dict[NonEmpty, NonEmpty] = Field(default_factory=dict, max_length=8)
+
+    @field_validator("preferences_text")
+    @classmethod
+    def normalize_preferences_text(cls, value: str | None) -> str | None:
+        return normalize(value) or None if value is not None else None
+
+    @model_validator(mode="after")
+    def validate_preferences(self):
+        from .preference_rules import CRITERIA
+        for key, value in self.preferences.items():
+            spec = CRITERIA.get(key)
+            if spec is None or value not in spec["values"]:
+                raise ValueError(f"Неизвестное пожелание: {key}={value}")
+            if self.category not in spec["categories"]:
+                raise ValueError(f"Критерий {key} не применяется к категории {self.category}")
+        self.preferences = dict(sorted(self.preferences.items()))
+        return self
 
     @field_validator("date", mode="before")
     @classmethod
@@ -138,6 +157,46 @@ class PreparedFeatures(Model):
     profiles: dict[str, list[PreparedFeature]]
 
 
+class SoftFeature(Model):
+    criterion: NonEmpty
+    value: NonEmpty
+    evidence_quote: str | None
+    source_field: Literal["description"] = "description"
+    evidence_type: Literal["explicit", "unknown"]
+    applicable_categories: list[NonEmpty]
+
+
+class PreferenceAssessment(Model):
+    criterion: str
+    label: str
+    requested_value: str
+    requested_label: str
+    observed_value: str | None
+    observed_label: str | None
+    status: Literal["matched", "conflicting", "unknown"]
+    points: Literal[-1, 0, 1]
+    evidence: list[Evidence]
+
+
+class ScoreBreakdown(Model):
+    preference_score: int = 0
+    specialization: Literal[0, 1] = 0
+    price_from_kzt: float
+    tie_break_id: str
+    criteria: list[PreferenceAssessment] = Field(default_factory=list)
+    ranking_version: str
+
+
+class PreferenceInterpretation(Model):
+    preferences: dict[str, str] = Field(default_factory=dict)
+    labels: dict[str, str] = Field(default_factory=dict)
+    clarification_needed: list[str] = Field(default_factory=list)
+    notes: list[str] = Field(default_factory=list)
+    interpretation_id: str = ""
+    rules_version: str = ""
+    mode: Literal["rules"] = "rules"
+
+
 class Card(Model):
     id: NonEmpty
     name: NonEmpty
@@ -150,6 +209,10 @@ class Card(Model):
     city_imputed: bool
     price_imputed: bool
     origin: Origin
+    matched_preferences: list[PreferenceAssessment] = Field(default_factory=list)
+    conflicting_preferences: list[PreferenceAssessment] = Field(default_factory=list)
+    unknown_preferences: list[PreferenceAssessment] = Field(default_factory=list)
+    score_breakdown: ScoreBreakdown | None = None
 
 
 class FilterStep(Model):
@@ -181,6 +244,10 @@ class RecommendResponse(Model):
     diagnostics: Diagnostics
     explanation_mode: ExplanationMode
     data_version: NonEmpty
+    preference_interpretation: PreferenceInterpretation = Field(default_factory=PreferenceInterpretation)
+    preference_mode: Literal["rules", "prepared", "mixed"] = "rules"
+    feature_version: str = ""
+    ranking_version: str = ""
 
 
 class DateRange(Model):
