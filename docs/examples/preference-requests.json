@@ -1,0 +1,22 @@
+[
+  {
+    "city": "Алматы",
+    "category": "Ведущий",
+    "date": "2026-10-10",
+    "event_format": "корпоратив",
+    "budget_kzt": 1000000,
+    "language": "русский",
+    "duration_hours": 6,
+    "preferences_text": "Ненавязчивая подача"
+  },
+  {
+    "city": "Алматы",
+    "category": "Ведущий",
+    "date": "2026-10-10",
+    "event_format": "корпоратив",
+    "budget_kzt": 1000000,
+    "language": "русский",
+    "duration_hours": 6,
+    "preferences_text": "Только развлечения и танцы"
+  }
+]

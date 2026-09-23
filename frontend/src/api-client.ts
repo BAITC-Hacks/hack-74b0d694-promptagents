@@ -1,4 +1,4 @@
-import type { DataIssue, ErrorResponse, HealthResponse, OptionsResponse, RecommendRequest, RecommendResponse } from './contracts';
+import type { DataIssue, ErrorResponse, HealthResponse, OptionsResponse, PreferenceOptions, RecommendRequest, RecommendResponse } from './contracts';
 
 export class ApiError extends Error {
   status: number | null;
@@ -46,6 +46,7 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 1500
 
 export const getHealth = (signal?: AbortSignal) => request<HealthResponse>('/api/health', { signal });
 export const getOptions = (signal?: AbortSignal) => request<OptionsResponse>('/api/options', { signal });
+export const getPreferenceOptions = (signal?: AbortSignal) => request<PreferenceOptions>('/api/preference-options', { signal });
 export const recommend = (input: RecommendRequest, signal?: AbortSignal) => request<RecommendResponse>('/api/recommend', {
   method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input), signal,
 });

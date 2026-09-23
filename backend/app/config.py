@@ -8,8 +8,8 @@ ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
 DATE_MIN = date(2026, 9, 23)
 DATE_MAX = date(2026, 12, 31)
-CONTRACT_VERSION = "1.0.0"
-RANKING_VERSION = "specialization-price-id-v1"
+CONTRACT_VERSION = "1.1.0"
+RANKING_VERSION = "preferences-specialization-price-id-v2"
 DEFAULT_DATA_PATH = "hackathon dataset anonymized .csv"
 
 
