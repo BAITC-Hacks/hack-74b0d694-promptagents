@@ -1,4 +1,4 @@
-import type { Evidence, RecommendResponse } from './contracts';
+import type { Card, Evidence, RecommendResponse } from './contracts';
 import { compareDates, dateLabel, evidenceValue, fieldLabels, money, originLabels, reasonLabels } from './presentation';
 
 function EvidenceList({ items }: { items: Evidence[] }) {
@@ -10,34 +10,17 @@ function EvidenceList({ items }: { items: Evidence[] }) {
   </li>)}</ul>;
 }
 
-export function ResultPanel({ result, previous = null }: { result: RecommendResponse; previous?: RecommendResponse | null }) {
-  const comparison = compareDates(previous, result);
-  const input = result.normalized_request;
-  const headings = { matched: 'Подрядчики под ваши условия', category_absent: 'В этом городе нет такой категории', no_match: 'Никто не прошёл все условия' };
-  return <div className={`result-panel ${result.status}`}>
-    <div className="result-heading"><div><p className="eyebrow">Результат подбора</p><h2>{headings[result.status]}</h2></div>
-      <span className="count-badge">Подходящих: {result.eligible_count}</span></div>
-    <p className="request-summary">{input.city} · {input.category} · {dateLabel(input.date)} · {input.event_format} · бюджет {money(input.budget_kzt)}
-      {input.language && ` · ${input.language}`}{input.duration_hours != null && ` · ${input.duration_hours} ч`}</p>
-    <p className="server-message">{result.message}</p>
-    {result.preference_interpretation && <section className="preference-summary" aria-label="Как поняты пожелания">
-      <h3>Как поняты пожелания</h3>
-      {result.preference_interpretation.clarification_needed.map(message => <p className="notice" role="alert" key={message}>{message}</p>)}
-      {Object.keys(result.preference_interpretation.labels).length
-        ? <ul>{Object.values(result.preference_interpretation.labels).map(label => <li key={label}>{label}</li>)}</ul>
-        : <p className="hint">Пожелания не заданы или не распознаны. Дополнительные предпочтения не предполагаются.</p>}
-      {result.preference_interpretation.notes.map(note => <p className="hint" key={note}>{note}</p>)}
-    </section>}
-    <p className="hint">Кандидатов в категории и городе: {result.total_candidates}. Показано: {Math.min(result.cards.length, 3)} из {result.eligible_count} подходящих.</p>
-    <div className="cards">{result.cards.slice(0, 3).map((card, index) => <article className="contractor-card" key={card.id} aria-label={card.name}>
-      <div className="card-top"><span className="rank">{String(index + 1).padStart(2, '0')}</span><span className="hint">{card.category} · {card.city}</span></div>
+function ContractorCard({ card, rank, alternativeDate }: { card: Card; rank?: number; alternativeDate?: string }) {
+  return <article className={`contractor-card${alternativeDate ? ' alternative-card' : ''}`}
+    aria-label={alternativeDate ? `${card.name} — предложение на ${dateLabel(alternativeDate)}` : card.name}>
+      <div className="card-top"><span className="rank">{alternativeDate ? 'Другая дата' : String(rank).padStart(2, '0')}</span><span className="hint">{card.category} · {card.city}</span></div>
       <h3>{card.name}</h3><p className="price">от {money(card.price_from_kzt)}</p>
       <div className="tags"><span>{originLabels[card.origin]}</span>
         {card.synthetic && <span>Синтетический профиль</span>}
         {card.city_imputed && <span>Город указан при подготовке данных</span>}
         {card.price_imputed && <span>Цена указана при подготовке данных</span>}
       </div>
-      <div className="explanation"><h4>Почему подходит</h4><p>{card.explanation}</p></div>
+      <div className="explanation"><h4>{alternativeDate ? `Почему подходит на ${dateLabel(alternativeDate)}` : 'Почему подходит'}</h4><p>{card.explanation}</p></div>
       {!!card.score_breakdown?.criteria.length && <div className="preference-assessments">
         {[
           ['Совпадает', card.matched_preferences ?? []],
@@ -55,12 +38,47 @@ export function ResultPanel({ result, previous = null }: { result: RecommendResp
           <EvidenceList items={item.evidence} /></li>)}</ul>
         <p className="hint">Затем — стартовая цена и ID: {card.score_breakdown.tie_break_id}.</p>
       </details>}
-    </article>)}</div>
-    {result.cards.length > 0 && <p className="hint">Указана стартовая цена. Итоговую стоимость и детали заказа уточняйте у подрядчика.</p>}
+    </article>;
+}
+
+export function ResultPanel({ result, previous = null }: { result: RecommendResponse; previous?: RecommendResponse | null }) {
+  const comparison = compareDates(previous, result);
+  const input = result.normalized_request;
+  const alternative = result.status === 'no_match' && result.alternative?.date !== input.date
+    ? result.alternative : null;
+  const headings = { matched: 'Подрядчики под ваши условия', category_absent: 'В этом городе нет такой категории', no_match: 'Никто не прошёл все условия' };
+  return <div className={`result-panel ${result.status}`}>
+    <div className="result-heading"><div><p className="eyebrow">Результат подбора</p><h2>{headings[result.status]}</h2></div>
+      <span className="count-badge">Подходящих: {result.eligible_count}</span></div>
+    <p className="request-summary">{input.city} · {input.category} · {dateLabel(input.date)} · {input.event_format} · бюджет {money(input.budget_kzt)}
+      {input.language && ` · ${input.language}`}{input.duration_hours != null && ` · ${input.duration_hours} ч`}</p>
+    <p className="server-message">{result.message}</p>
+    {result.preference_interpretation && <section className="preference-summary" aria-label="Как поняты пожелания">
+      <h3>Как поняты пожелания</h3>
+      {result.preference_interpretation.clarification_needed.map(message => <p className="notice" role="alert" key={message}>{message}</p>)}
+      {Object.keys(result.preference_interpretation.labels).length
+        ? <ul>{Object.values(result.preference_interpretation.labels).map(label => <li key={label}>{label}</li>)}</ul>
+        : <p className="hint">Пожелания не заданы или не распознаны. Дополнительные предпочтения не предполагаются.</p>}
+      {result.preference_interpretation.notes.map(note => <p className="hint" key={note}>{note}</p>)}
+    </section>}
+    <p className="hint">Кандидатов в категории и городе: {result.total_candidates}. Показано: {Math.min(result.cards.length, 3)} из {result.eligible_count} подходящих.</p>
+    <div className="cards">{result.cards.slice(0, 3).map((card, index) =>
+      <ContractorCard card={card} rank={index + 1} key={card.id} />)}</div>
+    {alternative && <section className="alternative-date" aria-label="Предложение на другую дату">
+      <h3>Ближайшая подходящая дата — <time dateTime={alternative.date}>{dateLabel(alternative.date)}</time></h3>
+      <p>На {dateLabel(input.date)} подходящих подрядчиков нет. Эта карточка относится только к {dateLabel(alternative.date)}.
+        {' '}Город, категория, бюджет, формат, язык и длительность сохранены.</p>
+      <ContractorCard card={alternative.card} alternativeDate={alternative.date} />
+      <p className="hint">{alternative.explanation_mode === 'prepared'
+        ? 'Объяснение предложения использует заранее подготовленные AI-признаки с доказательствами.'
+        : 'Объяснение предложения основано на данных каталога, без вызова AI-модели.'}</p>
+      {alternative.warnings.length > 0 && <ul>{alternative.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>}
+    </section>}
+    {(result.cards.length > 0 || alternative) && <p className="hint">Указана стартовая цена. Итоговую стоимость и детали заказа уточняйте у подрядчика.</p>}
     {comparison && <section className="date-comparison" aria-label="Сравнение дат"><h3>Что изменилось при смене даты</h3>
       <p>{dateLabel(previous!.normalized_request.date)} → {dateLabel(input.date)}. Остальные условия и версия каталога совпадают.</p>
       <ul>{comparison.map(message => <li key={message}>{message}</li>)}</ul></section>}
-    <section className="diagnostics" aria-label="Причины исключения"><h3>Как применялись условия</h3>
+    <section className="diagnostics" aria-label="Причины исключения"><h3>Как применялись условия на {dateLabel(input.date)}</h3>
       <p className="hint">Каждый профиль учитывается только на первом этапе, который он не прошёл.</p>
       <ol className="filter-steps">{result.diagnostics.filters.map(step => <li key={step.reason}>
         <span>{reasonLabels[step.reason]}</span><span>Исключено: <strong>{step.excluded_count}</strong> · осталось: {step.remaining_count}</span>
@@ -71,7 +89,10 @@ export function ResultPanel({ result, previous = null }: { result: RecommendResp
         </div>)}
       </details>}
     </section>
-    <footer className="result-meta">
+    <footer className="result-meta"><p>{result.explanation_mode === 'prepared'
+      ? 'В объяснениях использованы заранее подготовленные AI-признаки с доказательствами. Модель не вызывается для этого запроса.'
+      : 'Основной результат основан на данных каталога. Без вызова AI-модели.'}</p>
+      {result.diagnostics.warnings.length > 0 && <div className="notice"><strong>Примечания к данным</strong><ul>{result.diagnostics.warnings.map((message, i) => <li key={i}>{message}</li>)}</ul></div>}
       <details><summary>Версии данных и правил</summary><code>{result.data_version}</code><code>{result.feature_version}</code><code>{result.ranking_version}</code></details>
     </footer>
   </div>;

@@ -215,6 +215,18 @@ class Card(Model):
     score_breakdown: ScoreBreakdown | None = None
 
 
+class AlternativeDate(Model):
+    date: Date
+    card: Card
+    explanation_mode: ExplanationMode
+    warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def validate_date(cls, value: object) -> Date:
+        return calendar_date(value)
+
+
 class FilterStep(Model):
     reason: Reason
     excluded_count: int = Field(ge=0)
@@ -248,6 +260,7 @@ class RecommendResponse(Model):
     preference_mode: Literal["rules", "prepared", "mixed"] = "rules"
     feature_version: str = ""
     ranking_version: str = ""
+    alternative: AlternativeDate | None = None
 
 
 class DateRange(Model):

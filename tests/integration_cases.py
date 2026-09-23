@@ -8,12 +8,13 @@
 import csv
 import json
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.catalog import Catalog, load_catalog
-from backend.app.config import DEFAULT_DATA_PATH, ROOT
+from backend.app.config import DATE_MAX, DATE_MIN, DEFAULT_DATA_PATH, ROOT
 from backend.app.main import create_app
 from backend.app.matching import TEMPORARY_WARNING, recommend
 from backend.app.models import PreparedFeature, RecommendRequest, RecommendResponse
@@ -62,6 +63,31 @@ def assert_response(result, catalog):
         assert busy.evidence.value == by_id[busy.id].model_dump(mode="json")["busy_dates"]
         assert request.date.isoformat() in busy.evidence.value
 
+    if result.status != "no_match":
+        assert result.alternative is None
+    elif result.alternative is not None:
+        alternative = result.alternative
+        # Independent baseline audit of every day, including both window bounds.
+        possibilities = []
+        for offset in range((DATE_MAX - DATE_MIN).days + 1):
+            day = DATE_MIN + timedelta(days=offset)
+            audit = evaluate(catalog, request.model_copy(update={"date": day}))
+            if audit["eligible_count"]:
+                possibilities.append((abs((day - request.date).days), -day.toordinal(), day, audit["top_ids"][0]))
+        _, _, nearest, best_id = min(possibilities)
+        assert alternative.date == nearest and alternative.card.id == best_id
+        assert alternative.date != request.date
+        assert alternative.date.isoformat() in alternative.card.explanation
+        assert request.date.isoformat() not in alternative.card.explanation
+        profile = by_id[best_id]
+        raw = profile.model_dump(mode="json")
+        assert request.date in profile.busy_dates and alternative.date not in profile.busy_dates
+        assert {"city", "categories", "price_from_kzt", "event_formats", "busy_dates"} <= {e.field for e in alternative.card.evidence}
+        for evidence in alternative.card.evidence:
+            assert evidence.value == raw[evidence.field]
+            if evidence.source != "profile":
+                assert evidence.quote and evidence.quote in profile.description
+
 
 @pytest.mark.parametrize("index", range(6))
 def test_engine_full_eligible_sets_and_top_three(catalog, index):
@@ -102,7 +128,19 @@ def test_six_real_requests_through_asgi_api(api, catalog, index):
     assert result.explanation_mode == "baseline"
     assert result.data_version == catalog.data_version
     assert result.diagnostics.warnings  # Отсутствие optional-файла отражено честно.
+    assert "alternative" in response.json()
+    assert (result.alternative is not None) == (index == 4)
     assert_response(result, catalog)
+
+
+def test_api_no_alternative_when_budget_cannot_match(api):
+    request = demo_requests()[4].model_dump(mode="json") | {"budget_kzt": 1}
+    response = api.post("/api/recommend", json=request)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "no_match" and body["alternative"] is None
+    assert body["eligible_count"] == 0 and body["cards"] == []
+    assert body["normalized_request"]["date"] == request["date"]
 
 
 def test_date_comparison_proofs_and_florist_flags(api):

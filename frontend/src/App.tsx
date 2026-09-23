@@ -206,7 +206,8 @@ function LiveSearch() {
       {sending && <p className="loading-status" role="status"><span className="spinner" aria-hidden="true" />Проверяем условия. Можно изменить параметры или отменить запрос.</p>}
       {cancelled && <p role="status">Запрос отменён. Можно начать новый подбор.</p>}
       {error && <ErrorPanel error={error} retry={lastRequest.current ? () => { if (lastRequest.current) void send(lastRequest.current); } : undefined} />}
-      {result && <><p className="sr-only" role="status">Подбор завершён. Подходящих: {result.eligible_count}.</p><ResultPanel result={result} previous={previous} /></>}
+      {result && <><p className="sr-only" role="status">Подбор завершён. Подходящих на выбранную дату: {result.eligible_count}.
+        {result.status === 'no_match' && result.alternative && ` Есть предложение на другую дату: ${result.alternative.date}.`}</p><ResultPanel result={result} previous={previous} /></>}
       {!sending && !error && !result && !cancelled && <div className="initial-state"><span className="step-number">02</span><h2>Здесь появятся рекомендации</h2><p>Заполните условия или выберите один из сценариев. Мы покажем результат и основания выбора.</p></div>}
     </section>
   </>;
