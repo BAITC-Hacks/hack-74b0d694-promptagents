@@ -121,6 +121,6 @@ _Ссылка на развёрнутую версию пока не указа�
 
 ## 11. Команда
 
-Biloshchytskyi Yevhenii
-Batyr Nursaya
-Biloshchytskyi Artem
+ - Biloshchytskyi Yevhenii
+ - Batyr Nursaya
+ - Biloshchytskyi Artem
