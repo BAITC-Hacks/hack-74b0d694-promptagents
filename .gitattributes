@@ -1,0 +1,2 @@
+# Сохраняем точные байты исходного CSV при checkout/commit (включая CRLF/BOM).
+*.csv -text

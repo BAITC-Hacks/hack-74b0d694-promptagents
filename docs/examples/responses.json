@@ -1,0 +1,217 @@
+{
+  "example_only": true,
+  "notice": "Учебные ответы контракта на отдельной тестовой фикстуре. Не реальные ответы API; нулевой хеш — плейсхолдер. Не подключать к runtime.",
+  "recommend": [
+    {
+      "status": "matched",
+      "message": "Найден 1 подрядчик: в учебном каталоге этой категории и города только 1 запись.",
+      "normalized_request": {
+        "city": "алматы",
+        "date": "2026-10-10",
+        "event_format": "корпоратив",
+        "category": "ведущий",
+        "budget_kzt": 150000,
+        "duration_hours": 6,
+        "language": "русский"
+      },
+      "total_candidates": 1,
+      "eligible_count": 1,
+      "cards": [
+        {
+          "id": "TEST-001",
+          "name": "Тестовый профиль",
+          "category": "Ведущий",
+          "city": "Алматы",
+          "price_from_kzt": 100000,
+          "explanation": "Принимает корпоративы на русском языке до 6 часов, стартовая цена — от 100 000 ₸ при бюджете 150 000 ₸. Итоговая стоимость требует уточнения.",
+          "evidence": [
+            {
+              "source": "profile",
+              "field": "event_formats",
+              "value": [
+                "корпоратив"
+              ],
+              "quote": null
+            },
+            {
+              "source": "profile",
+              "field": "languages",
+              "value": [
+                "русский"
+              ],
+              "quote": null
+            },
+            {
+              "source": "profile",
+              "field": "max_hours",
+              "value": 6,
+              "quote": null
+            },
+            {
+              "source": "profile",
+              "field": "price_from_kzt",
+              "value": 100000,
+              "quote": null
+            }
+          ],
+          "synthetic": true,
+          "city_imputed": false,
+          "price_imputed": false,
+          "origin": "source_synthetic"
+        }
+      ],
+      "diagnostics": {
+        "filters": [
+          {
+            "reason": "busy",
+            "excluded_count": 0,
+            "remaining_count": 1
+          },
+          {
+            "reason": "budget",
+            "excluded_count": 0,
+            "remaining_count": 1
+          },
+          {
+            "reason": "format",
+            "excluded_count": 0,
+            "remaining_count": 1
+          },
+          {
+            "reason": "language",
+            "excluded_count": 0,
+            "remaining_count": 1
+          },
+          {
+            "reason": "duration",
+            "excluded_count": 0,
+            "remaining_count": 1
+          }
+        ],
+        "busy_profiles": [],
+        "warnings": []
+      },
+      "explanation_mode": "baseline",
+      "data_version": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "status": "category_absent",
+      "message": "В выбранном городе этой категории нет.",
+      "normalized_request": {
+        "city": "астана",
+        "date": "2026-10-10",
+        "event_format": "корпоратив",
+        "category": "декоратор",
+        "budget_kzt": 150000,
+        "duration_hours": 6,
+        "language": "русский"
+      },
+      "total_candidates": 0,
+      "eligible_count": 0,
+      "cards": [],
+      "diagnostics": {
+        "filters": [
+          {
+            "reason": "busy",
+            "excluded_count": 0,
+            "remaining_count": 0
+          },
+          {
+            "reason": "budget",
+            "excluded_count": 0,
+            "remaining_count": 0
+          },
+          {
+            "reason": "format",
+            "excluded_count": 0,
+            "remaining_count": 0
+          },
+          {
+            "reason": "language",
+            "excluded_count": 0,
+            "remaining_count": 0
+          },
+          {
+            "reason": "duration",
+            "excluded_count": 0,
+            "remaining_count": 0
+          }
+        ],
+        "busy_profiles": [],
+        "warnings": []
+      },
+      "explanation_mode": "baseline",
+      "data_version": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "status": "no_match",
+      "message": "Единственный кандидат занят на выбранную дату.",
+      "normalized_request": {
+        "city": "алматы",
+        "date": "2026-10-11",
+        "event_format": "корпоратив",
+        "category": "ведущий",
+        "budget_kzt": 150000,
+        "duration_hours": 6,
+        "language": "русский"
+      },
+      "total_candidates": 1,
+      "eligible_count": 0,
+      "cards": [],
+      "diagnostics": {
+        "filters": [
+          {
+            "reason": "busy",
+            "excluded_count": 1,
+            "remaining_count": 0
+          },
+          {
+            "reason": "budget",
+            "excluded_count": 0,
+            "remaining_count": 0
+          },
+          {
+            "reason": "format",
+            "excluded_count": 0,
+            "remaining_count": 0
+          },
+          {
+            "reason": "language",
+            "excluded_count": 0,
+            "remaining_count": 0
+          },
+          {
+            "reason": "duration",
+            "excluded_count": 0,
+            "remaining_count": 0
+          }
+        ],
+        "busy_profiles": [
+          {
+            "id": "TEST-001",
+            "name": "Тестовый профиль",
+            "date": "2026-10-11",
+            "evidence": {
+              "source": "profile",
+              "field": "busy_dates",
+              "value": [
+                "2026-10-11"
+              ],
+              "quote": null
+            }
+          }
+        ],
+        "warnings": []
+      },
+      "explanation_mode": "baseline",
+      "data_version": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ],
+  "error": {
+    "error": {
+      "code": "not_implemented",
+      "message": "Подбор ещё не реализован. Это каркас приложения.",
+      "issues": []
+    }
+  }
+}
