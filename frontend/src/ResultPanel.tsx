@@ -71,13 +71,7 @@ export function ResultPanel({ result, previous = null }: { result: RecommendResp
         </div>)}
       </details>}
     </section>
-    <footer className="result-meta"><p>{result.explanation_mode === 'prepared'
-      ? 'В объяснениях использованы заранее подготовленные AI-признаки с доказательствами. Модель не вызывается для этого запроса.'
-      : 'Базовые объяснения по данным каталога. Без вызова AI-модели.'}</p>
-      {result.preference_mode && <p>{result.preference_mode === 'rules' ? 'Пожелания сопоставлены по точным цитатам и фиксированным правилам, без AI.'
-        : result.preference_mode === 'prepared' ? 'Для пожеланий использованы заранее проверенные AI-признаки.'
-        : 'Для пожеланий использованы проверенные AI-признаки и локальные правила.'} Неизвестные сведения не считаются недостатком.</p>}
-      {result.diagnostics.warnings.length > 0 && <div className="notice"><strong>Примечания к данным</strong><ul>{result.diagnostics.warnings.map((message, i) => <li key={i}>{message}</li>)}</ul></div>}
+    <footer className="result-meta">
       <details><summary>Версии данных и правил</summary><code>{result.data_version}</code><code>{result.feature_version}</code><code>{result.ranking_version}</code></details>
     </footer>
   </div>;
