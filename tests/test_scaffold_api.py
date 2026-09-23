@@ -7,14 +7,14 @@ from backend.app.models import OptionsResponse, RecommendRequest
 from scripts.check_demos import demo_requests
 
 
-def test_health_options_and_explicit_stub(monkeypatch):
+def test_health_options_and_contract(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     with TestClient(create_app(ROOT / DEFAULT_DATA_PATH)) as client:
         health = client.get("/api/health")
         assert health.status_code == 200
         assert health.json()["dataset_status"] == "ready"
         assert health.json()["profile_count"] == 66
-        assert health.json()["recommendation_implemented"] is False
+        assert isinstance(health.json()["recommendation_implemented"], bool)
         response = client.get("/api/options")
         assert response.status_code == 200
         options = OptionsResponse.model_validate(response.json())
@@ -22,9 +22,8 @@ def test_health_options_and_explicit_stub(monkeypatch):
         assert "Декоратор" in options.categories  # Можно выбрать отсутствующую пару.
         astana = next(item for item in options.categories_by_city if item.city == "Астана")
         assert "Декоратор" not in astana.categories
-        result = client.post("/api/recommend", json=demo_requests()[0].model_dump(mode="json"))
-        assert result.status_code == 501
-        assert result.json()["error"]["code"] == "not_implemented"
+        # Готовность POST проверяется строго в integration_cases.py (200, не 501).
+        # Этот контракт health/options одинаков для каркаса и готового backend.
         schema = client.get("/openapi.json").json()
         assert "RecommendResponse" in schema["components"]["schemas"]
 

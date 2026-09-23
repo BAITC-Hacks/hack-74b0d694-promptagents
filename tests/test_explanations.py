@@ -40,6 +40,7 @@ def test_baseline_real_demos_is_deterministic_and_offline(catalog, monkeypatch):
             result = explain(profile, request)
             assert result == explain(profile, request)
             assert result.mode == "baseline"
+            assert result.text.count(".") in (1, 2)
             assert "итоговая стоимость требует уточнения" in result.text
             assert_evidence(profile, result)
             texts.append(result.text)
@@ -96,3 +97,32 @@ def test_explainer_cannot_make_rejected_profile_look_eligible(example_profile, e
 def test_busy_profile_is_not_explained_as_available(example_profile, example_request):
     with pytest.raises(ValueError):
         explain(example_profile.model_copy(update={"busy_dates": [example_request.date]}), example_request)
+
+
+@pytest.mark.parametrize("description", [
+    "Создаю идеальные сценарии корпоративов.",
+    "Создаю стильные сценарии корпоративов с захватывающими танцами.",
+    "Тонкий юмор и атмосфера комфорта для каждого гостя.",
+    "Мой коллега — ведущий корпоративов и сценарист.",
+    "Сценарист корпоративов, работаю только на английском языке.",
+    "Пишу сценарии свадеб, других форматов нет.",
+    "Сценарии корпоративов за 1 тенге, работаю 12 часов.",
+])
+def test_baseline_does_not_turn_ads_or_conflicts_into_evidence(example_profile, example_request, description):
+    result = explain(example_profile.model_copy(update={"description": description}), example_request)
+    assert all(e.source == "profile" for e in result.evidence)
+    assert description not in result.text
+
+
+def test_prepared_distinctive_detail_is_not_rewritten(example_profile, example_request):
+    feature = PreparedFeature(kind="distinctive_detail", event_format="корпоратив",
+                              value="музыкальными викторинами", quote=example_profile.description)
+    result = explain(example_profile, example_request, (feature,))
+    assert result.mode == "prepared"
+    assert "музыкальными викторинами" in result.text
+    assert_evidence(example_profile, result)
+
+
+def test_fractional_duration_is_not_rounded_to_zero(example_profile, example_request):
+    result = explain(example_profile, example_request.model_copy(update={"duration_hours": 0.00000000001}))
+    assert "запрошено 0,00000000001 ч" in result.text

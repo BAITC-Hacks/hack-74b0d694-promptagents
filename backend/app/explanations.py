@@ -5,6 +5,7 @@
 """
 
 import re
+from decimal import Decimal
 
 from .models import Evidence, Explanation, PreparedFeature, Profile, RecommendRequest, normalize
 
@@ -19,14 +20,18 @@ FORMAT_PATTERNS = {
 UNSAFE_CONTEXT = re.compile(
     r"\b(?:не|нет|ни|без|кроме|никогда|раньше|ранее|перестал\w*|прекрат\w*|"
     r"планир\w*|хочу|хотел\w*|возможно|если|бы|мечта\w*|чуж\w*|"
-    r"игнорир\w*|инструкци\w*|system|assistant)\b|[?]"
+    r"игнорир\w*|инструкци\w*|коллег\w*|конкурент\w*|другой|другие|цитат\w*|system|assistant)\b|[?]"
 )
 STRUCTURED_CLAIMS = re.compile(
     r"\d|[₸$€]|\b(?:цен\w*|стоим\w*|бюджет\w*|тенге|час\w*|"
     r"длительн\w*|язык\w*|русск\w*|казахск\w*|английск\w*|"
     r"свобод\w*|занят\w*)\b"
 )
-MARKETING = re.compile(r"\b(?:лучш\w*|идеальн\w*|востребован\w*|незабываем\w*|гарантир\w*|харизм\w*)\b")
+MARKETING = re.compile(
+    r"\b(?:лучш\w*|идеальн\w*|востребован\w*|незабываем\w*|гарантир\w*|харизм\w*|"
+    r"красив\w*|стильн\w*|захватыва\w*|комфорт\w*|атмосфер\w*|уникальн\w*|"
+    r"эксклюзив\w*|потряса\w*|премиальн\w*|изыскан\w*|талантлив\w*|тонк\w*)\b"
+)
 CITIES = {"алматы": r"\b(?:алматы|алмате)\b", "астана": r"\bастан\w*\b", "зарубежье": r"\bзарубеж\w*\b"}
 DETAILS = {
     "ведущий": r"сценарист|сценари\w*|интерактив\w*|импровизац\w*|юмор|танц\w*|акт[её]р\w*|телевид\w*|специализ\w*",
@@ -121,7 +126,10 @@ def _baseline_quote(profile: Profile, request: RecommendRequest) -> str | None:
 
 
 def _number(value: float | int) -> str:
-    return f"{value:,.10f}".rstrip("0").rstrip(".").replace(",", " ").replace(".", ",")
+    text = format(Decimal(str(value)), ",f")
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text.replace(",", " ").replace(".", ",")
 
 
 def explain(
