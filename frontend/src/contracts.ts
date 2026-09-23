@@ -30,6 +30,12 @@ export interface Card {
   price_imputed: boolean;
   origin: 'source_original' | 'source_synthetic' | 'team_synthetic';
 }
+export interface AlternativeDate {
+  date: string;
+  card: Card;
+  explanation_mode: ExplanationMode;
+  warnings: string[];
+}
 export interface Diagnostics {
   filters: {
     reason: 'busy' | 'budget' | 'format' | 'language' | 'duration';
@@ -46,6 +52,7 @@ export interface RecommendResponse {
   total_candidates: number;
   eligible_count: number;
   cards: Card[];
+  alternative?: AlternativeDate | null;
   diagnostics: Diagnostics;
   explanation_mode: ExplanationMode;
   data_version: string;

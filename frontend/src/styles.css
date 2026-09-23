@@ -70,6 +70,13 @@ input:disabled, select:disabled { background: #eff2eb; }
 .server-message { font-size: 1rem; padding: 16px 20px; border-radius: 9px; background: #e9eee1; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 285px), 1fr)); gap: 18px; margin: 24px 0 16px; }
 .contractor-card { min-width: 0; background: #fff; border: 1px solid #cddac3; border-radius: 14px; padding: 24px; overflow-wrap: anywhere; }
+.alternative-date { margin: 28px 0 20px; min-width: 0; overflow-wrap: anywhere; }
+.alternative-card { background: #eef4fb; border-color: #7a98b8; color: #243b53; margin: 16px 0; }
+.alternative-card .rank { background: #dce8f5; color: #304f70; }
+.alternative-card .card-top { flex-wrap: wrap; }
+.alternative-card .hint, .alternative-card .source-label { color: #4b6278; }
+.alternative-card summary { color: #304f70; min-height: 44px; }
+.alternative-card :focus-visible { outline: 3px solid #235fa4; outline-offset: 4px; }
 .card-top { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
 .rank { color: #486d45; background: #edf2e3; border-radius: 5px; padding: 4px 8px; font-size: .78rem; font-weight: 700; }
 .contractor-card h3 { font-size: 1.35rem; margin-bottom: 8px; }

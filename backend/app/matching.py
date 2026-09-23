@@ -1,11 +1,13 @@
 """Pure deterministic matching; no file access, network or relaxation of conditions."""
 
 from collections.abc import Callable
+from datetime import timedelta
 
 from . import explanations, temporary_explanations
 from .catalog import Catalog
+from .config import DATE_MAX, DATE_MIN
 from .models import (
-    BusyProfile, Card, Diagnostics, Evidence, Explanation, FilterStep,
+    AlternativeDate, BusyProfile, Card, Diagnostics, Evidence, Explanation, FilterStep,
     PreparedFeature, Profile, RecommendRequest, RecommendResponse, normalize,
 )
 from .prepared import FeatureSet
@@ -47,23 +49,8 @@ def result_message(total: int, eligible: int, steps: list[FilterStep]) -> str:
     return message
 
 
-def recommend(
-    catalog: Catalog,
-    request: RecommendRequest,
-    features: FeatureSet | None = None,
-    *,
-    explainer: Explainer | None = None,
-) -> RecommendResponse:
-    features = features if features is not None else FeatureSet.absent()
-    if features.dataset_sha256 is not None and features.dataset_sha256 != catalog.sha256:
-        features = FeatureSet(warnings=("SHA-256 подготовленных признаков не совпадает с каталогом; baseline без AI.",))
-    warnings = list(catalog.report.get("warnings", ())) + list(features.warnings)
-    candidates = [p for p in catalog.profiles if normalize(p.city) == request.city
-                  and contains(request.category, p.categories)]
-    remaining = candidates
-    steps = []
-    busy = []
-    predicates = (
+def exclusion_predicates(request: RecommendRequest):
+    return (
         ("busy", lambda p: request.date in p.busy_dates),
         ("budget", lambda p: p.price_from_kzt > request.budget_kzt),
         ("format", lambda p: not contains(request.event_format, p.event_formats)),
@@ -71,29 +58,26 @@ def recommend(
         ("duration", lambda p: request.duration_hours is not None and p.max_hours is not None
          and request.duration_hours > p.max_hours),
     )
-    for reason, exclude in predicates:
-        accepted, rejected = [], []
-        for profile in remaining:
-            (rejected if exclude(profile) else accepted).append(profile)
-        remaining = accepted
-        steps.append(FilterStep(reason=reason, excluded_count=len(rejected), remaining_count=len(remaining)))
-        if reason == "busy":
-            busy = [BusyProfile(
-                id=p.id, name=p.anon_name, date=request.date,
-                evidence=Evidence(source="profile", field="busy_dates",
-                                  value=p.model_dump(mode="json")["busy_dates"]),
-            ) for p in sorted(rejected, key=lambda p: p.id)]
 
+
+def rank_profiles(catalog: Catalog, profiles: list[Profile], request: RecommendRequest, features: FeatureSet):
     # The FeatureSet only exposes features validated against this exact profile
     # and catalog hash, also for direct callers of the pure matcher.
-    validated = {p.id: features.for_profile(catalog, p, request.event_format) for p in remaining}
-    ranked = sorted(remaining, key=lambda p: (
+    validated = {p.id: features.for_profile(catalog, p, request.event_format) for p in profiles}
+    ranked = sorted(profiles, key=lambda p: (
         -int(any(f.kind == "format_specialization" for f in validated[p.id])),
         p.price_from_kzt, p.id,
     ))
+    return ranked, validated
+
+
+def build_cards(
+    ranked: list[Profile], validated: dict[str, tuple[PreparedFeature, ...]],
+    request: RecommendRequest, explainer: Explainer | None, warnings: list[str], *, limit: int,
+) -> tuple[list[Card], str]:
     cards = []
     mode = "baseline"
-    for profile in ranked[:3]:
+    for profile in ranked[:limit]:
         explain = explainer if explainer is not None else explanations.explain
         try:
             explanation = explain(profile, request, validated[profile.id])
@@ -114,11 +98,67 @@ def recommend(
             price_imputed=profile.price_imputed,
             origin="source_synthetic" if profile.synthetic else "source_original",
         ))
+    return cards, mode
+
+
+def recommend(
+    catalog: Catalog,
+    request: RecommendRequest,
+    features: FeatureSet | None = None,
+    *,
+    explainer: Explainer | None = None,
+) -> RecommendResponse:
+    features = features if features is not None else FeatureSet.absent()
+    if features.dataset_sha256 is not None and features.dataset_sha256 != catalog.sha256:
+        features = FeatureSet(warnings=("SHA-256 подготовленных признаков не совпадает с каталогом; baseline без AI.",))
+    warnings = list(catalog.report.get("warnings", ())) + list(features.warnings)
+    candidates = [p for p in catalog.profiles if normalize(p.city) == request.city
+                  and contains(request.category, p.categories)]
+    remaining = candidates
+    steps = []
+    busy = []
+    predicates = exclusion_predicates(request)
+    for reason, exclude in predicates:
+        accepted, rejected = [], []
+        for profile in remaining:
+            (rejected if exclude(profile) else accepted).append(profile)
+        remaining = accepted
+        steps.append(FilterStep(reason=reason, excluded_count=len(rejected), remaining_count=len(remaining)))
+        if reason == "busy":
+            busy = [BusyProfile(
+                id=p.id, name=p.anon_name, date=request.date,
+                evidence=Evidence(source="profile", field="busy_dates",
+                                  value=p.model_dump(mode="json")["busy_dates"]),
+            ) for p in sorted(rejected, key=lambda p: p.id)]
+
+    ranked, validated = rank_profiles(catalog, remaining, request, features)
+    cards, mode = build_cards(ranked, validated, request, explainer, warnings, limit=3)
     total, eligible = len(candidates), len(ranked)
+    alternative = None
+    if total and not eligible:
+        # Keep every non-date predicate identical to the original search.
+        possible = [p for p in candidates if not any(exclude(p) for _, exclude in predicates[1:])]
+        dates = (DATE_MIN + timedelta(days=offset) for offset in range((DATE_MAX - DATE_MIN).days + 1))
+        ordered_dates = sorted((day for day in dates if day != request.date),
+                               key=lambda day: (abs((day - request.date).days), -day.toordinal()))
+        for day in ordered_dates if possible else ():
+            available = [p for p in possible if day not in p.busy_dates]
+            if not available:
+                continue
+            alternative_request = request.model_copy(update={"date": day})
+            alternative_ranked, alternative_validated = rank_profiles(catalog, available, alternative_request, features)
+            alternative_warnings = []
+            alternative_cards, alternative_mode = build_cards(
+                alternative_ranked, alternative_validated, alternative_request, explainer,
+                alternative_warnings, limit=1,
+            )
+            alternative = AlternativeDate(date=day, card=alternative_cards[0],
+                                          explanation_mode=alternative_mode, warnings=alternative_warnings)
+            break
     return RecommendResponse(
         status="matched" if eligible else ("no_match" if total else "category_absent"),
         message=result_message(total, eligible, steps), normalized_request=request,
         total_candidates=total, eligible_count=eligible, cards=cards,
         diagnostics=Diagnostics(filters=steps, busy_profiles=busy, warnings=warnings),
-        explanation_mode=mode, data_version=catalog.data_version,
+        explanation_mode=mode, data_version=catalog.data_version, alternative=alternative,
     )

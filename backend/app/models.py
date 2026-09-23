@@ -152,6 +152,18 @@ class Card(Model):
     origin: Origin
 
 
+class AlternativeDate(Model):
+    date: Date
+    card: Card
+    explanation_mode: ExplanationMode
+    warnings: list[str] = Field(default_factory=list)
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def validate_date(cls, value: object) -> Date:
+        return calendar_date(value)
+
+
 class FilterStep(Model):
     reason: Reason
     excluded_count: int = Field(ge=0)
@@ -181,6 +193,7 @@ class RecommendResponse(Model):
     diagnostics: Diagnostics
     explanation_mode: ExplanationMode
     data_version: NonEmpty
+    alternative: AlternativeDate | None = None
 
 
 class DateRange(Model):
